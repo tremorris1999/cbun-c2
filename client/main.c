@@ -44,14 +44,17 @@ int main(int argc, char **argv)
     fprintf(stderr, "err: %s\n", strerror(err));
   }
 
+  uint8_t zero = 0;
+  send(sockfd, &zero, 1, 0);
+
   uint8_t *recd = recv_data(sockfd);
   if (!recd) return 1;
 
   action_t *action = build_action(recd);
-  // printf("id: %s\n", action->id);
-  // printf("type: %d\n", action->action_type);
-  // printf("payload length: %d\n", action->payload_len);
-  // printf("payload: %s\n", action->payload);:
+  printf("id: %s\n", action->id);
+  printf("type: %d\n", action->action_type);
+  printf("payload length: %d\n", action->payload_len);
+  printf("payload: %s\n", action->payload);
 
   switch (action->action_type) {
     case EXIT:
