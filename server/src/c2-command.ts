@@ -13,7 +13,7 @@ export class Command {
     this.action = action
     this.payload = Object.keys(payload)
       .map((k) => `${k}=${payload[k]};`)
-      .join()
+      .join('')
   }
 
   static fromAction(action: ActionType) {
