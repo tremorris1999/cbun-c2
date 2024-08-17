@@ -1,8 +1,6 @@
 export enum ActionType {
   EXIT = 0,
-  GET_ENV = 1,
-  RUN_COMMAND = 2,
-  SLEEP = 4,
+  SLEEP = 1,
 }
 
 export class Command {
@@ -13,7 +11,9 @@ export class Command {
   constructor(action: ActionType, payload: Record<string, any>) {
     this.id = crypto.randomUUID()
     this.action = action
-    this.payload = JSON.stringify(payload)
+    this.payload = Object.keys(payload)
+      .map((k) => `${k}=${payload[k]};`)
+      .join()
   }
 
   static fromAction(action: ActionType) {
@@ -36,10 +36,7 @@ export class Command {
     buffer.writeUint32BE(len - 4, Command.offsets.packetLength)
     buffer.write(this.id, Command.offsets.id, 'ascii')
     buffer.writeUint8(this.action, Command.offsets.actionType)
-    buffer.writeUint32BE(
-      this.payload?.length || 0,
-      Command.offsets.payloadLength
-    )
+    buffer.writeUint32BE(this.payload?.length || 0, Command.offsets.payloadLength)
     buffer.write(this.payload || '', Command.offsets.payload, 'ascii')
 
     return buffer
