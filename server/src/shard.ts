@@ -49,8 +49,6 @@ export const Shard = (
 
               console.info(`(${port}): ${socket.remoteAddress} connected as "${client.id}".`)
               socket.write(client.id, 0, 36)
-              const buffer = Command.fromAction(ActionType.GET_ENV).toBuffer()
-              socket.write(buffer)
             })
             .catch(() => {
               console.info(`(${port}): ${socket.remoteAddress} failed to connect.`)

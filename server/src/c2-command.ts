@@ -12,8 +12,8 @@ export class Command {
     this.id = crypto.randomUUID()
     this.action = action
     this.payload = Object.keys(payload)
-      .map((k) => `${k}=${payload[k]};`)
-      .join('')
+      .map((k) => `${k}=${payload[k]}`)
+      .join(';')
   }
 
   static fromAction(action: ActionType) {
