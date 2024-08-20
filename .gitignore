@@ -227,3 +227,7 @@ dist
 
 # Finder (MacOS) folder config
 .DS_Store
+
+# Zig
+.zig-cache
+zig-out
