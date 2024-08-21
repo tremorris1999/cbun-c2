@@ -1,6 +1,7 @@
 export enum ActionType {
   EXIT = 0,
-  SLEEP = 1,
+  CONFIG = 1,
+  SLEEP = 2,
 }
 
 export class Command {

@@ -90,7 +90,7 @@ command_t *recv_command(int sockfd) {
   }
 
   while (bytes_recd < data_len) {
-    int cur_recd = recv(sockfd, data_buf, data_len, 0);
+    int cur_recd = recv(sockfd, &data_buf[bytes_recd], data_len - bytes_recd, 0);
     switch (cur_recd) {
     case 0:
       fprintf(stderr, "socket closed.\n");

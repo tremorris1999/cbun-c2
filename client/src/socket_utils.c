@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/socket.h>
 #include <unistd.h>
 
 #include "socket_utils.h"
@@ -56,4 +57,21 @@ void disconnect_socket(int *sockfd) {
   shutdown(*sockfd, SHUT_RDWR);
   close(*sockfd);
   *sockfd = -1;
+}
+
+int send_buf(int sockfd, uint8_t *buf, size_t length) {
+  int bytes_sent = 0;
+  while (bytes_sent < 39) {
+    int cur = send(sockfd, &buf[bytes_sent], length - bytes_sent, 0);
+    switch (cur) {
+    case -1:
+    case 0:
+      return 0;
+      break;
+    default:
+      bytes_sent += cur;
+    }
+  }
+
+  return 1;
 }
