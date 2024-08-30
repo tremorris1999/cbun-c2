@@ -8,6 +8,7 @@ export type Socket = BunSocket<SocketData>
 export type Client = {
   socket: Socket
   timeout?: ReturnType<typeof setTimeout>
+  queue: Packet[]
 }
 
 export class Shard {
@@ -35,7 +36,6 @@ export class Shard {
   }
 
   private onOpen(socket: Socket) {
-    console.info(`(${this.port}): ${socket.remoteAddress} attempting to connect...`)
     socket.data = { sessionId: crypto.randomUUID() }
     this.inboundConnections.set(socket.data.sessionId, socket)
     const packet = new Packet({
@@ -43,6 +43,7 @@ export class Shard {
       type: PacketType.ISSUE_SESSION_ID,
     })
 
+    console.info(`(${this.port}): ${socket.remoteAddress} attempting to connect as (transitive) session ${socket.data.sessionId}`)
     socket.write(packet.toBuffer())
     setTimeout(() => {
       if (this.inboundConnections.delete(socket.data.sessionId)) {
@@ -59,17 +60,23 @@ export class Shard {
     }
 
     try {
-      const packet = Packet.fromBuffer(data)
-      if (packet.type === PacketType.RESUME_SESSION) {
+      const packetIn = Packet.fromBuffer(data)
+      if (packetIn.type === PacketType.RESUME_SESSION) {
         if (this.inboundConnections.delete(socket.data.sessionId)) {
-          socket.data.sessionId = packet.id
-          const { timeout } = this.clients.get(socket.data.sessionId) || {}
+          socket.data.sessionId = packetIn.id
+          const { timeout, queue } = this.clients.get(socket.data.sessionId) || { queue: [] }
           if (timeout) clearTimeout(timeout)
-          this.clients.set(socket.data.sessionId, { socket })
+          this.clients.set(socket.data.sessionId, { socket, queue })
           console.info(
             `(${this.port}): ${socket.remoteAddress} ${timeout ? 're' : ''}connected as session ${socket.data.sessionId}`
           )
         }
+      }
+
+      const { queue } = this.clients.get(socket.data.sessionId) || { queue: []}
+      const packetOut = queue.shift()
+      if (packetOut) {
+        socket.write(packetOut.toBuffer())
       }
     } catch (e) {
       console.error(
