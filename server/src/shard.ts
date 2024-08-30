@@ -1,101 +1,89 @@
-import { ActionType, Command } from './c2-command'
-import type { Socket, TCPSocketListenOptions } from 'bun'
+import { Packet, PacketType } from './packet'
+import { UUID } from './utils'
+import type { Socket as BunSocket, TCPSocketListener } from 'bun'
 
-type UUID = ReturnType<typeof crypto.randomUUID>
-type Connector = (id: 0 | UUID) => Promise<BaseClient>
+type SocketData = { sessionId: UUID }
+export type Socket = BunSocket<SocketData>
 
-export interface Connection {
-  connector: Connector
-  abortController: AbortController
+export type Client = {
+  socket: Socket
+  timeout?: ReturnType<typeof setTimeout>
 }
 
-interface BaseClient {
-  id: UUID
-}
+export class Shard {
+  readonly hostname: string
+  readonly port: number
+  readonly socket: TCPSocketListener<SocketData>
+  private clients: Map<UUID, Client>
+  private inboundConnections = new Map<UUID, Socket>()
 
-export interface Client extends BaseClient {
-  socket: Socket<unknown>
-}
+  constructor(hostname: string, port: number, clients: Map<UUID, Client>) {
+    this.hostname = hostname
+    this.port = port
+    this.clients = clients
+    this.socket = Bun.listen<SocketData>({
+      hostname: this.hostname,
+      port: this.port,
+      socket: {
+        open: (socket) => this.onOpen(socket),
+        data: (socket, data) => this.onData(socket, data),
+        close: (socket) => this.onClose(socket)
+      },
+    })
 
-export const uuidRegex = /[A-z,0-9]{8}\-[A-z,0-9]{4}-[A-z,0-9]{4}-[A-z,0-9]{4}-[A-z,0-9]{12}/
+    console.debug(`(${this.port}): Started listening as "${this.hostname}"`)
+  }
 
-export const Shard = (
-  port: number,
-  inboundConnectionsRef: Map<string, Connection>,
-  clientsRef: Client[]
-): TCPSocketListenOptions<undefined> => {
-  console.info(`(${port}): listening...`)
+  private onOpen(socket: Socket) {
+    console.info(`(${this.port}): ${socket.remoteAddress} attempting to connect...`)
+    socket.data = { sessionId: crypto.randomUUID() }
+    this.inboundConnections.set(socket.data.sessionId, socket)
+    const packet = new Packet({
+      id: socket.data.sessionId,
+      type: PacketType.ISSUE_SESSION_ID,
+    })
 
-  return {
-    hostname: '127.0.0.1',
-    port,
-    socket: {
-      data(socket, data) {
-        const id =
-          data.byteLength === 1 ? data.readUint8(0) : (data.toString('ascii', 0, 36) as UUID)
+    socket.write(packet.toBuffer())
+    setTimeout(() => {
+      if (this.inboundConnections.delete(socket.data.sessionId)) {
+        socket.end('timeout')
+        console.info(`(${this.port}): ${socket.remoteAddress} did not respond in time.`)
+      }
+    }, 10000)
+  }
 
-        const combo = `${socket.remoteAddress}:${socket.localPort}`
-        const matchZero = typeof id === 'number' && id === 0
-        const matchUUID = typeof id === 'string' && uuidRegex.test(id)
-        if (matchZero || matchUUID) {
-          inboundConnectionsRef
-            .get(combo)
-            ?.connector(id)
-            .then((client) => {
-              clientsRef.push({
-                ...client,
-                socket,
-              })
+  private onData(socket: Socket, data: Buffer) {
+    if (!socket.data.sessionId) {
+      socket.end('invalid session')
+      return
+    }
 
-              console.info(`(${port}): ${socket.remoteAddress} connected as "${client.id}".`)
-              socket.write(client.id, 0, 36)
-            })
-            .catch(() => {
-              console.info(`(${port}): ${socket.remoteAddress} failed to connect.`)
-              socket.end('fail')
-            })
+    try {
+      const packet = Packet.fromBuffer(data)
+      if (packet.type === PacketType.RESUME_SESSION) {
+        if (this.inboundConnections.delete(socket.data.sessionId)) {
+          socket.data.sessionId = packet.id
+          const { timeout } = this.clients.get(socket.data.sessionId) || {}
+          if (timeout) clearTimeout(timeout)
+          this.clients.set(socket.data.sessionId, { socket })
+          console.info(
+            `(${this.port}): ${socket.remoteAddress} ${timeout ? 're' : ''}connected as session ${socket.data.sessionId}`
+          )
         }
+      }
+    } catch (e) {
+      console.error(
+        `(${this.port}): Invalid packet of length ${data.length} received from ${socket.remoteAddress}!`
+      )
 
-        inboundConnectionsRef.delete(combo)
-      }, // message received from client
-      open(socket) {
-        console.info(`(${port}): ${socket.remoteAddress} attempting to connect...`)
-        const abortController = new AbortController()
+      socket.end('unsupported protocol')
+    }
+  }
 
-        const connector = (id: 0 | UUID) =>
-          new Promise<BaseClient>((res, rej) => {
-            if (abortController.signal.aborted) rej()
-            abortController.signal.onabort = () => rej()
-
-            res({
-              id: id === 0 ? crypto.randomUUID() : id,
-            })
-          })
-
-        const combo = `${socket.remoteAddress}:${socket.localPort}`
-        setTimeout(() => {
-          abortController.abort()
-          if (inboundConnectionsRef.has(combo)) {
-            inboundConnectionsRef.delete(combo)
-            console.info(`(${port}): ${socket.remoteAddress} did not respond in time.`)
-            socket.end('timeout')
-          }
-        }, 10000)
-
-        // Abort any pending connection from this address and port combo
-        inboundConnectionsRef.get(combo)?.abortController.abort()
-
-        // Add pending connection
-        inboundConnectionsRef.set(combo, {
-          abortController,
-          connector,
-        })
-      }, // socket opened
-      close(socket) {}, // socket closed
-      drain(socket) {}, // socket ready for more data
-      error(socket, error) {
-        console.log(`ERR (${socket.remoteAddress}): ${error}`)
-      }, // error handler
-    },
+  private onClose(socket: Socket) {
+    this.inboundConnections.delete(socket.data.sessionId)
+    const { timeout } = this.clients.get(socket.data.sessionId) || {}
+    if (!timeout) this.clients.delete(socket.data.sessionId)
+    console.info(`(${this.port}): ${socket.remoteAddress} disconnected.`)
   }
 }

@@ -1,12 +1,9 @@
-import { ActionType, Command } from './c2-command'
-import { Shard, type Connection, type Client } from './shard'
+import { Shard, type Client } from './shard'
+import { UUID } from './utils'
 
-const inboundConnections = new Map<string, Connection>()
-const clients = [] as Client[]
+const clients = new Map<UUID, Client>()
 
-Bun.listen(Shard(8080, inboundConnections, clients))
-Bun.listen(Shard(8081, inboundConnections, clients))
-await new Promise<void>(res => setTimeout(() => res(), 5000))
-clients.forEach((c) => {
-  c.socket.write(new Command(ActionType.CONFIG, {interval: 5, jitter: 0.25}).toBuffer())
-})
+const shards = [
+  new Shard('127.0.0.1', 8080, clients),
+  new Shard('127.0.0.1', 8081, clients),
+]
