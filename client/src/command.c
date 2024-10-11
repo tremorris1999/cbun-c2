@@ -8,6 +8,13 @@
 
 int parse_params(command_t *command, char *src_buf, size_t offset,
                  size_t length) {
+  // TODO: implement binary payload
+  if (command->type == 255) {
+    command->params = NULL;
+    command->params_length = 0;
+    return 0;
+  }
+
   char *buf = &src_buf[offset];
   int pairs_found = 1;
   for (size_t i = 0; i < length; i += 1) {
@@ -76,7 +83,7 @@ command_t *recv_command(int sockfd) {
     return NULL;
 
   uint8_t len_buf[4];
-  if (recv(sockfd, &len_buf, 4 * sizeof(uint8_t), 0) < 4) {
+  if (recv(sockfd, &len_buf, 4, 0) < 4) {
     fprintf(stderr, "invalid packet length.\n");
     return NULL;
   }
@@ -90,7 +97,8 @@ command_t *recv_command(int sockfd) {
   }
 
   while (bytes_recd < data_len) {
-    int cur_recd = recv(sockfd, &data_buf[bytes_recd], data_len - bytes_recd, 0);
+    int cur_recd =
+        recv(sockfd, &data_buf[bytes_recd], data_len - bytes_recd, 0);
     switch (cur_recd) {
     case 0:
       fprintf(stderr, "socket closed.\n");
@@ -104,6 +112,7 @@ command_t *recv_command(int sockfd) {
     }
   }
 
+  printf("%s", data_buf);
   command_t *command = calloc(1, sizeof(command_t));
   if (!command)
     return NULL;
@@ -112,9 +121,15 @@ command_t *recv_command(int sockfd) {
   command->type = data_buf[36];
 
   uint32_t length = read_uint32(data_buf, 37);
-  int params_len = parse_params(command, (char *)data_buf, 41, length);
-  if (!params_len)
-    command = NULL;
+  if (command->type == 255) {
+    command->payload = calloc(length + 1, sizeof(uint8_t));
+    memcpy(command->payload, data_buf, length);
+    command->payload_length = length;
+  } else {
+    int params_len = parse_params(command, (char *)data_buf, 41, length);
+    if (params_len == -1)
+      command = NULL;
+  }
 
   free(data_buf);
   return command;
@@ -131,4 +146,5 @@ void free_command(command_t *command) {
 
   free(params);
   free(command);
+  command = NULL;
 }

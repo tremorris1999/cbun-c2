@@ -1,6 +1,6 @@
 #include "command.h"
 #include "socket_utils.h"
-#include <math.h>
+#include <netinet/in.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -15,44 +15,52 @@ int main(int argc, char **argv) {
   uint16_t interval = 0;
   float jitter = 0;
 
-  int sockfd = connect_socket(8080, session_id);
+  int sockfd = connect_socket(8080);
   command_t *command = recv_command(sockfd);
-  switch (command->type) {
-  case EXIT:
-    break;
-  case CONFIG: {
-    char packet[39] = "1;";
-    memcpy(&packet[2], command->id, 37);
-    send_buf(sockfd, (uint8_t *)packet, 39);
-    interval = strtol(command->params[0]->value, NULL, 10);
-    jitter = strtof(command->params[1]->value, NULL);
+  while (command && command->type != EXIT) {
+    switch (command->type) {
+    case ISSUE_SESSION_ID: {
+      if (!session_id[0])
+        memcpy(session_id, command->id, 36);
+
+      uint8_t buf[42] = {'\0'};
+      write_uint32(buf, 42, 0);
+      memcpy(&buf[4], session_id, 36);
+      memset(&buf[40], RESUME_SESSION, 1);
+      uint32_t len = read_uint32(buf, 0);
+      send_buf(sockfd, buf, 41);
+      break;
+    }
+    default: {
+      // printf("invalid command type");
+      break;
+    }
+    }
+
     free_command(command);
-    break;
+    command = recv_command(sockfd);
   }
-  case SLEEP:
-    handle_reconnect(command, &sockfd, session_id);
-    break;
-  }
+  // while (1) {
+  //   disconnect_socket(&sockfd);
+  //   float random = (2.0f * rand() / RAND_MAX) - 1.0f; // -1 < r < 1
+  //   float delay_s = interval + (jitter * random);
+  //   float delay_ns = fmod(delay_s, 1) * 1000000000;
+  //   struct timespec remaining, delay = {floorf(delay_s), delay_ns};
+  //   printf("sleeping {%.2lf, %.2lf}...\n", floorf(delay_s), delay_ns);
+  //   nanosleep(&delay, &remaining);
 
-  while (1) {
-    disconnect_socket(&sockfd);
-    float random = (2.0f * rand() / RAND_MAX) - 1.0f; // -1 < r < 1
-    float delay_s = interval + (jitter * random);
-    float delay_ns = fmod(delay_s, 1) * 1000000000;
-    struct timespec remaining, delay = {floorf(delay_s), delay_ns};
-    printf("sleeping {%.2lf, %.2lf}...\n", floorf(delay_s), delay_ns);
-    nanosleep(&delay, &remaining);
-
-    sockfd = connect_socket(8080, session_id);
-    send_buf(sockfd, (uint8_t *)command->id, 37);
-  }
+  //   sockfd = connect_socket(8080, session_id);
+  //   send_buf(sockfd, (uint8_t *)command->id, 37);
+  // }
 
   return 0;
 }
 
 void handle_reconnect(command_t *command, int *sockfd, char *session_id) {
-  int32_t reconnect_time = strtol(command->params[0]->value, NULL, 10);
-  int16_t port = strtol(command->params[1]->value, NULL, 10);
+  printf("%s: %s\n", command->params[0]->key, command->params[0]->value);
+  printf("%s: %s\n", command->params[1]->key, command->params[1]->value);
+  int32_t reconnect_time = strtol(command->params[1]->value, NULL, 10);
+  int16_t port = strtol(command->params[0]->value, NULL, 10);
   char packet[39] = "1;";
   memcpy(&packet[2], command->id, 37);
   send_buf(*sockfd, (uint8_t *)packet, 39);
@@ -63,5 +71,5 @@ void handle_reconnect(command_t *command, int *sockfd, char *session_id) {
   printf("sleeping for %.f...\n", delay);
   struct timespec remaining, request = {delay, 0};
   nanosleep(&request, &remaining);
-  *sockfd = connect_socket(port, session_id);
+  *sockfd = connect_socket(port);
 }

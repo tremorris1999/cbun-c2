@@ -8,7 +8,7 @@
 
 #include "socket_utils.h"
 
-int connect_socket(int16_t port, char *session_id) {
+int connect_socket(int16_t port) {
   struct sockaddr_in client_addr = {'\0'};
   int sockfd = socket(AF_INET, SOCK_STREAM, 0);
   char *end;
@@ -23,17 +23,7 @@ int connect_socket(int16_t port, char *session_id) {
     return -1;
   }
 
-  uint8_t zero = 0;
-  if (strlen(session_id) < 36) {
-    send(sockfd, &zero, 1, 0);
-    if (recv(sockfd, session_id, 36, 0) != 36) {
-      fprintf(stderr, "err: invalid session id\n");
-      return -1;
-    }
-  } else
-    send(sockfd, session_id, 36, 0);
-
-  printf("connected to %d as %s\n", port, session_id);
+  printf("connected to %d\n", port);
   return sockfd;
 }
 
@@ -43,6 +33,13 @@ uint32_t read_uint32(uint8_t *buf, size_t offset) {
     val = (val << 8) + buf[offset + i];
 
   return val;
+}
+
+void write_uint32(uint8_t *buf, uint32_t value, size_t offset) {
+  buf[offset] = value >> 24;
+  buf[offset + 1] = value >> 16;
+  buf[offset + 2] = value >> 8;
+  buf[offset + 3] = value;
 }
 
 uint16_t read_uint16(uint8_t *buf, size_t offset) {
@@ -61,7 +58,7 @@ void disconnect_socket(int *sockfd) {
 
 int send_buf(int sockfd, uint8_t *buf, size_t length) {
   int bytes_sent = 0;
-  while (bytes_sent < 39) {
+  while (bytes_sent < length) {
     int cur = send(sockfd, &buf[bytes_sent], length - bytes_sent, 0);
     switch (cur) {
     case -1:

@@ -4,6 +4,7 @@ export enum PacketType {
   EXIT = 0,
   ISSUE_SESSION_ID = 1,
   RESUME_SESSION = 2,
+  SUSPEND_SESSION = 3,
 }
 
 const PacketMemory = {
@@ -20,7 +21,7 @@ const PacketMemory = {
     length: 1,
   },
   dataLength: {
-    start: 40,
+    start: 41,
     length: 4,
   },
   data: {
@@ -50,29 +51,35 @@ export class Packet {
     this.type = type
     this.data = data
     this.direction = direction
-    this.length = 44 + data.length
+    this.length = 41 + data.length
   }
 
-  static fromBuffer(buffer: Buffer): Packet {
-    const params = {
-      direction: 'IN',
-      length: buffer.readUInt32BE(PacketMemory.length.start),
-      id: buffer.toString('ascii', PacketMemory.id.start, PacketMemory.id.length),
-      type: buffer.readUInt8(PacketMemory.type.start),
-    } as Packet
+  static readFromBuffer(buffer: Buffer): Packet | null {
+    try {
+      const params = {
+        direction: 'IN',
+        length: buffer.readUInt32BE(PacketMemory.length.start),
+        id: buffer.toString('ascii', PacketMemory.id.start, PacketMemory.id.length),
+        type: buffer.readUInt8(PacketMemory.type.start),
+      } as Packet
 
-    return new Packet({
-      ...params,
-      data: Uint8Array.prototype.slice
-        .bind(buffer)
-        .call(PacketMemory.data.start, params.length - 40),
-    })
+      return new Packet({
+        ...params,
+        data: Uint8Array.prototype.slice
+          .bind(buffer)
+          .call(PacketMemory.data.start, params.length - 40),
+      })
+    } catch {
+      return null
+    }
   }
 
-  static fromObject<T>(type: PacketType, obj: Record<string, T extends Function ? never : T>) {
-    const data = Object.keys(obj)
-      .map((k) => `${k}=${obj[k]}`)
-      .join(';')
+  private static fromRecord(type: PacketType, obj?: Record<string, string | number>) {
+    const data = obj
+      ? Object.keys(obj)
+          .map((k) => `${k}=${obj[k]}`)
+          .join(';')
+      : ''
 
     return new Packet({
       id: crypto.randomUUID(),
@@ -83,20 +90,23 @@ export class Packet {
   }
 
   toBuffer() {
-    const buffer = Buffer.alloc(this.data.length + 40)
+    const buffer = Buffer.alloc(this.length + 4)
     buffer.writeUInt32BE(this.length)
-    buffer.write(this.id.toString(), PacketMemory.id.start, PacketMemory.id.length, 'ascii')
-    buffer.writeUInt8(this.type)
-    if (typeof this.data === 'string')
-      buffer.write(this.data, PacketMemory.data.start, this.data.length, 'ascii')
-    else
-      Buffer.from(this.data).copy(
-        buffer,
-        0,
-        PacketMemory.data.start,
-        PacketMemory.data.start + this.data.length
-      )
+    buffer.write(this.id.toString(), 4, 36, 'ascii')
+    buffer.writeUInt8(this.type, 40)
+    buffer.writeUInt32BE(
+      typeof this.data === 'string' ? this.data.length : this.data.byteLength,
+      41
+    )
+    if (typeof this.data === 'string') buffer.write(this.data, 45, this.data.length, 'ascii')
+    else Buffer.from(this.data).copy(buffer, 45)
 
     return buffer
+  }
+
+  static from(type: PacketType.SUSPEND_SESSION, obj: { port: number; time: number }): Packet
+  static from(type: PacketType.ISSUE_SESSION_ID): Packet
+  static from(type: PacketType, obj?: Record<string, string | number>) {
+    return Packet.fromRecord(type, obj)
   }
 }

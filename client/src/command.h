@@ -6,13 +6,20 @@ typedef struct kvp_t {
   char *value;
 } kvp_t;
 
-enum command_type { EXIT = 0, CONFIG = 1, SLEEP = 2 };
+enum command_type {
+  EXIT = 0,
+  ISSUE_SESSION_ID,
+  RESUME_SESSION = 2,
+  SUSPEND_SESSION = 3
+};
 
 typedef struct command_t {
   char id[37];
-  enum command_type type;
+  uint8_t type;
   kvp_t **params;
-  int params_length;
+  uint32_t params_length;
+  uint8_t *payload;
+  uint32_t payload_length;
 } command_t;
 
 static int parse_params(command_t *command, char *buf, size_t offset,

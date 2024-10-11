@@ -15,20 +15,22 @@ export class Shard {
   readonly hostname: string
   readonly port: number
   readonly socket: TCPSocketListener<SocketData>
+  readonly farmPorts: number[]
   private clients: Map<UUID, Client>
   private inboundConnections = new Map<UUID, Socket>()
 
-  constructor(hostname: string, port: number, clients: Map<UUID, Client>) {
+  constructor(hostname: string, port: number, clients: Map<UUID, Client>, farmPorts: number[]) {
     this.hostname = hostname
     this.port = port
     this.clients = clients
+    this.farmPorts = farmPorts
     this.socket = Bun.listen<SocketData>({
       hostname: this.hostname,
       port: this.port,
       socket: {
         open: (socket) => this.onOpen(socket),
         data: (socket, data) => this.onData(socket, data),
-        close: (socket) => this.onClose(socket)
+        close: (socket) => this.onClose(socket),
       },
     })
 
@@ -43,7 +45,9 @@ export class Shard {
       type: PacketType.ISSUE_SESSION_ID,
     })
 
-    console.info(`(${this.port}): ${socket.remoteAddress} attempting to connect as (transitive) session ${socket.data.sessionId}`)
+    console.info(
+      `(${this.port}): ${socket.remoteAddress} attempting to connect as (transitive) session ${socket.data.sessionId}`
+    )
     socket.write(packet.toBuffer())
     setTimeout(() => {
       if (this.inboundConnections.delete(socket.data.sessionId)) {
@@ -53,38 +57,65 @@ export class Shard {
     }, 10000)
   }
 
-  private onData(socket: Socket, data: Buffer) {
+  private generateSuspension() {
+    const rand = new Uint32Array(3)
+    crypto.getRandomValues(rand)
+    const portIdx = rand[0] % Math.max(0, this.farmPorts.length - 1)
+    const timeOffsetScalar = rand[1] / 4_294_967_295 - 0.5
+    const timeOffset = 10 * timeOffsetScalar
+    return { port: this.farmPorts[portIdx], time: Math.floor(Date.now() / 1000 + timeOffset) }
+  }
+
+  private async onData(socket: Socket, data: Buffer) {
     if (!socket.data.sessionId) {
       socket.end('invalid session')
       return
     }
 
-    try {
-      const packetIn = Packet.fromBuffer(data)
-      if (packetIn.type === PacketType.RESUME_SESSION) {
-        if (this.inboundConnections.delete(socket.data.sessionId)) {
-          socket.data.sessionId = packetIn.id
-          const { timeout, queue } = this.clients.get(socket.data.sessionId) || { queue: [] }
-          if (timeout) clearTimeout(timeout)
-          this.clients.set(socket.data.sessionId, { socket, queue })
-          console.info(
-            `(${this.port}): ${socket.remoteAddress} ${timeout ? 're' : ''}connected as session ${socket.data.sessionId}`
-          )
-        }
-      }
-
-      const { queue } = this.clients.get(socket.data.sessionId) || { queue: []}
-      const packetOut = queue.shift()
-      if (packetOut) {
-        socket.write(packetOut.toBuffer())
-      }
-    } catch (e) {
+    const packetIn = Packet.readFromBuffer(data)
+    if (!packetIn) {
       console.error(
         `(${this.port}): Invalid packet of length ${data.length} received from ${socket.remoteAddress}!`
       )
 
       socket.end('unsupported protocol')
+      return
     }
+
+    /**
+     * Resume session handshake. Assigns existing or new session to connected socket, then adds an ISSUE_SESSION_ID packet to the client's queue.
+     */
+    if (packetIn.type === PacketType.RESUME_SESSION) {
+      this.inboundConnections.delete(socket.data.sessionId)
+      const { id: sessionId } = packetIn
+      socket.data.sessionId = sessionId
+      let existing = this.clients.get(sessionId)
+      if (existing?.timeout) clearTimeout(existing.timeout)
+      this.clients.set(sessionId, { socket, queue: existing?.queue || [] })
+      console.info(
+        `(${this.port}): ${socket.remoteAddress} ${existing?.timeout ? 're' : ''}connected as session ${socket.data.sessionId}`
+      )
+
+      existing = this.clients.get(sessionId)
+      if (!existing) {
+        socket.terminate()
+        console.error(
+          `(${this.port}): forcefully disconnected error client ${socket.remoteAddress}!`
+        )
+        return
+      }
+
+      // existing.queue.push(Packet.from(PacketType.ISSUE_SESSION_ID))
+    }
+
+    /**
+     * Grab client queue and send the first packet (or SUSPEND_SESSION if no work exists in queue)
+     */
+    const { queue } = this.clients.get(socket.data.sessionId) || { queue: [] }
+    const packetOut =
+      queue.shift() || Packet.from(PacketType.SUSPEND_SESSION, this.generateSuspension())
+
+    socket.write(packetOut.toBuffer())
   }
 
   private onClose(socket: Socket) {
