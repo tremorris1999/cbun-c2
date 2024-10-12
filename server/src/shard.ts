@@ -61,8 +61,8 @@ export class Shard {
     const rand = new Uint32Array(3)
     crypto.getRandomValues(rand)
     const portIdx = rand[0] % Math.max(0, this.farmPorts.length - 1)
-    const timeOffsetScalar = rand[1] / 4_294_967_295 - 0.5
-    const timeOffset = 10 * timeOffsetScalar
+    const timeOffsetScalar = (rand[1] / 4_294_967_295 - 0.5)
+    const timeOffset = 10 + (5 * timeOffsetScalar)
     return { port: this.farmPorts[portIdx], time: Math.floor(Date.now() / 1000 + timeOffset) }
   }
 

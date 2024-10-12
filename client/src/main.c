@@ -31,6 +31,15 @@ int main(int argc, char **argv) {
       send_buf(sockfd, buf, 41);
       break;
     }
+    case SUSPEND_SESSION: {
+      int16_t port = strtol(command->params[0]->value, NULL, 10);
+      int32_t reconnect_time = strtol(command->params[1]->value, NULL, 10);
+      double delay = difftime(reconnect_time, time(NULL));
+      printf("sleeping for %.f...\n", delay);
+      struct timespec remaining, request = {delay, 0};
+      nanosleep(&request, &remaining);
+      sockfd = connect_socket(port);
+    }
     default: {
       // printf("invalid command type");
       break;
