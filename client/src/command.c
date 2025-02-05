@@ -112,7 +112,7 @@ command_t *recv_command(int sockfd) {
     }
   }
 
-  printf("%s", data_buf);
+  // printf("%s", data_buf);
   command_t *command = calloc(1, sizeof(command_t));
   if (!command)
     return NULL;

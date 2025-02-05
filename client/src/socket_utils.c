@@ -42,6 +42,18 @@ void write_uint32(uint8_t *buf, uint32_t value, size_t offset) {
   buf[offset + 3] = value;
 }
 
+
+void write_uint64(uint8_t *buf, uint64_t value, size_t offset) {
+  buf[offset] = value >> 56;
+  buf[offset + 1] = value >> 48;
+  buf[offset + 2] = value >> 40;
+  buf[offset + 3] = value >> 32;
+  buf[offset + 4] = value >> 24;
+  buf[offset + 5] = value >> 16;
+  buf[offset + 6] = value >> 8;
+  buf[offset + 7] = value;
+}
+
 uint16_t read_uint16(uint8_t *buf, size_t offset) {
   uint16_t val = 0;
   for (size_t i = 0; i < 2; i += 1)

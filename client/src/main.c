@@ -7,6 +7,7 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <time.h>
+#include <unistd.h>
 
 void handle_reconnect(command_t *command, int *sockfd, char *session_id);
 
@@ -27,7 +28,6 @@ int main(int argc, char **argv) {
       write_uint32(buf, 42, 0);
       memcpy(&buf[4], session_id, 36);
       memset(&buf[40], RESUME_SESSION, 1);
-      uint32_t len = read_uint32(buf, 0);
       send_buf(sockfd, buf, 41);
       break;
     }
@@ -37,11 +37,27 @@ int main(int argc, char **argv) {
       double delay = difftime(reconnect_time, time(NULL));
       printf("sleeping for %.f...\n", delay);
       struct timespec remaining, request = {delay, 0};
+      close(sockfd);
       nanosleep(&request, &remaining);
       sockfd = connect_socket(port);
+      break;
+    }
+    case SYS_CONF: {
+      uint32_t pages = sysconf(_SC_PHYS_PAGES);
+      uint32_t page_size = sysconf(_SC_PAGE_SIZE);
+      uint64_t mem = pages * page_size;
+      printf("returning 'res=%ld'", mem);
+      uint8_t buf[54] = {'\0'};
+      write_uint32(buf, 54, 0);
+      memcpy(&buf[4], session_id, 36);
+      buf[40] = SYS_CONF;
+      memcpy(&buf[41], "res=", 4);
+      write_uint64(buf, mem, 45);
+      send_buf(sockfd, buf, 53);
+      break;
     }
     default: {
-      // printf("invalid command type");
+      printf("\ninvalid command type");
       break;
     }
     }
@@ -49,36 +65,8 @@ int main(int argc, char **argv) {
     free_command(command);
     command = recv_command(sockfd);
   }
-  // while (1) {
-  //   disconnect_socket(&sockfd);
-  //   float random = (2.0f * rand() / RAND_MAX) - 1.0f; // -1 < r < 1
-  //   float delay_s = interval + (jitter * random);
-  //   float delay_ns = fmod(delay_s, 1) * 1000000000;
-  //   struct timespec remaining, delay = {floorf(delay_s), delay_ns};
-  //   printf("sleeping {%.2lf, %.2lf}...\n", floorf(delay_s), delay_ns);
-  //   nanosleep(&delay, &remaining);
 
-  //   sockfd = connect_socket(8080, session_id);
-  //   send_buf(sockfd, (uint8_t *)command->id, 37);
-  // }
-
-  return 0;
-}
-
-void handle_reconnect(command_t *command, int *sockfd, char *session_id) {
-  printf("%s: %s\n", command->params[0]->key, command->params[0]->value);
-  printf("%s: %s\n", command->params[1]->key, command->params[1]->value);
-  int32_t reconnect_time = strtol(command->params[1]->value, NULL, 10);
-  int16_t port = strtol(command->params[0]->value, NULL, 10);
-  char packet[39] = "1;";
-  memcpy(&packet[2], command->id, 37);
-  send_buf(*sockfd, (uint8_t *)packet, 39);
+  printf("\nEXIT received from server. Shutting down gracefully");
   free_command(command);
-  disconnect_socket(sockfd);
-
-  double delay = difftime(reconnect_time, time(NULL));
-  printf("sleeping for %.f...\n", delay);
-  struct timespec remaining, request = {delay, 0};
-  nanosleep(&request, &remaining);
-  *sockfd = connect_socket(port);
+  return 0;
 }

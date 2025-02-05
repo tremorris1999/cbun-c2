@@ -10,7 +10,8 @@ enum command_type {
   EXIT = 0,
   ISSUE_SESSION_ID,
   RESUME_SESSION = 2,
-  SUSPEND_SESSION = 3
+  SUSPEND_SESSION = 3,
+  SYS_CONF = 4
 };
 
 typedef struct command_t {
