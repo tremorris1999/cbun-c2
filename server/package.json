@@ -14,5 +14,8 @@
   "type": "module",
   "devDependencies": {
     "@types/bun": "^1.1.8"
+  },
+  "dependencies": {
+    "elysia": "^1.1.20"
   }
 }

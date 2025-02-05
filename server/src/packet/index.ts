@@ -5,28 +5,7 @@ export enum PacketType {
   ISSUE_SESSION_ID = 1,
   RESUME_SESSION = 2,
   SUSPEND_SESSION = 3,
-}
-
-const PacketMemory = {
-  length: {
-    start: 0,
-    length: 4,
-  },
-  id: {
-    start: 4,
-    length: 36,
-  },
-  type: {
-    start: 40,
-    length: 1,
-  },
-  dataLength: {
-    start: 41,
-    length: 4,
-  },
-  data: {
-    start: 45,
-  },
+  SYS_CONF = 4
 }
 
 export class Packet {
@@ -58,18 +37,19 @@ export class Packet {
     try {
       const params = {
         direction: 'IN',
-        length: buffer.readUInt32BE(PacketMemory.length.start),
-        id: buffer.toString('ascii', PacketMemory.id.start, PacketMemory.id.length),
-        type: buffer.readUInt8(PacketMemory.type.start),
+        length: buffer.readUInt32BE(0),
+        id: buffer.toString('ascii', 4, 40),
+        type: buffer.readUInt8(40),
       } as Packet
 
       return new Packet({
         ...params,
         data: Uint8Array.prototype.slice
           .bind(buffer)
-          .call(PacketMemory.data.start, params.length - 40),
+          .call(42, params.length - 41),
       })
-    } catch {
+    } catch(e) {
+      console.log(e)
       return null
     }
   }
@@ -106,6 +86,8 @@ export class Packet {
 
   static from(type: PacketType.SUSPEND_SESSION, obj: { port: number; time: number }): Packet
   static from(type: PacketType.ISSUE_SESSION_ID): Packet
+  static from(type: PacketType.EXIT): Packet
+  static from(type: PacketType.SYS_CONF): Packet
   static from(type: PacketType, obj?: Record<string, string | number>) {
     return Packet.fromRecord(type, obj)
   }
