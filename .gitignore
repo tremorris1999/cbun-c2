@@ -231,3 +231,5 @@ dist
 # Zig
 .zig-cache
 zig-out
+
+server/front/dist
