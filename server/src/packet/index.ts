@@ -5,7 +5,7 @@ export enum PacketType {
   ISSUE_SESSION_ID = 1,
   RESUME_SESSION = 2,
   SUSPEND_SESSION = 3,
-  SYS_CONF = 4
+  SYS_CONF = 4,
 }
 
 export class Packet {
@@ -42,13 +42,12 @@ export class Packet {
         type: buffer.readUInt8(40),
       } as Packet
 
+      const data = buffer.subarray(41);
       return new Packet({
         ...params,
-        data: Uint8Array.prototype.slice
-          .bind(buffer)
-          .call(42, params.length - 41),
+        data,
       })
-    } catch(e) {
+    } catch (e) {
       console.log(e)
       return null
     }

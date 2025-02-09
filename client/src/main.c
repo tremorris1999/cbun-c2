@@ -43,16 +43,15 @@ int main(int argc, char **argv) {
       break;
     }
     case SYS_CONF: {
-      uint32_t pages = sysconf(_SC_PHYS_PAGES);
+      uint32_t avl_pages = sysconf(_SC_AVPHYS_PAGES);
       uint32_t page_size = sysconf(_SC_PAGE_SIZE);
-      uint64_t mem = pages * page_size;
-      printf("returning 'res=%ld'", mem);
+      uint64_t avl_mem = avl_pages * page_size;
       uint8_t buf[54] = {'\0'};
       write_uint32(buf, 54, 0);
       memcpy(&buf[4], session_id, 36);
       buf[40] = SYS_CONF;
       memcpy(&buf[41], "res=", 4);
-      write_uint64(buf, mem, 45);
+      write_uint64(buf, avl_mem, 45);
       send_buf(sockfd, buf, 53);
       break;
     }
