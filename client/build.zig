@@ -8,6 +8,8 @@ pub fn build(b: *std.Build) void {
     });
 
     exe.linkLibC();
+    exe.addIncludePath(b.path("./.proto/packet.pb-c.h"));
+    exe.addCSourceFile(.{ .file = b.path("./.proto/packet.pb-c.c") });
     exe.addCSourceFiles(.{
         .root = b.path("src"),
         .files = &.{

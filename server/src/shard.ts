@@ -1,6 +1,6 @@
-import { Packet, PacketType } from './packet'
 import { UUID } from './utils'
 import type { Socket as BunSocket, TCPSocketListener } from 'bun'
+import { Packet, PacketType } from '../.proto/gen'
 
 type SocketData = { sessionId: UUID }
 export type Socket = BunSocket<SocketData>
@@ -41,15 +41,18 @@ export class Shard {
   private onOpen(socket: Socket) {
     socket.data = { sessionId: crypto.randomUUID() }
     this.inboundConnections.set(socket.data.sessionId, socket)
-    const packet = new Packet({
-      id: socket.data.sessionId,
-      type: PacketType.ISSUE_SESSION_ID,
+    const packet = Packet.create({
+       id: socket.data.sessionId,
+       type: PacketType.ISSUE_SESSION_ID,
+       sequence: 1,
+       sequence_max: 5,
+       bytes: Buffer.alloc(0)
     })
 
     console.info(
       `(${this.port}): ${socket.remoteAddress} attempting to connect as (transitive) session ${socket.data.sessionId}`
     )
-    socket.write(packet.toBuffer())
+    socket.write(Packet.encode(packet).finish())
     setTimeout(() => {
       if (this.inboundConnections.delete(socket.data.sessionId)) {
         socket.end('timeout')
@@ -76,7 +79,7 @@ export class Shard {
       return
     }
 
-    const packetIn = Packet.readFromBuffer(data)
+    const packetIn = null as any
     if (!packetIn) {
       console.error(
         `(${this.port}): Invalid packet of length ${data.length} received from ${socket.remoteAddress}!`
@@ -108,11 +111,11 @@ export class Shard {
         )
         return
       }
-    } else if (packetIn.type === PacketType.SYS_CONF) {
-      const { data } = packetIn as { data: Uint8Array }
-      const res = Buffer.from(data).toString('ascii', 0, 4)
-      const len = Buffer.from(data).readBigUInt64BE(4)
-      console.log('res', res, 'len', len)
+    // } else if (packetIn.type === PacketType.SYS_CONF) {
+      // const { data } = packetIn as { data: Uint8Array }
+      // const res = Buffer.from(data).toString('ascii', 0, 4)
+      // const len = Buffer.from(data).readBigUInt64BE(4)
+      // console.log('res', res, 'len', len)
     }
 
     /**
@@ -129,10 +132,10 @@ export class Shard {
           suspension.time * 2000 - Date.now()
         )
 
-      packetOut = Packet.from(PacketType.SUSPEND_SESSION, suspension)
+      // packetOut = Packet.from(PacketType.SUSPEND_SESSION, suspension)
     }
 
-    socket.write(packetOut.toBuffer())
+    // socket.write(packetOut.toBuffer())
   }
 
   private onClose(socket: Socket) {

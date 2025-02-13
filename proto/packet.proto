@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+enum PacketType {
+  EXIT = 0;
+  ISSUE_SESSION_ID = 1;
+  RESUME_SESSION = 2;
+  SUSPEND_SESSION = 3;
+}
+
+message Packet {
+  optional string session_id = 1;
+  string id = 2;
+  PacketType type = 3;
+  optional uint32 sequence = 4;
+  optional uint32 sequence_max = 5;
+  optional bytes payload = 6;
+}
